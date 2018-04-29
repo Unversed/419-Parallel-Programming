@@ -1,0 +1,30 @@
+Like previous sequential code, we begin by applying the two key factors associated with parallel programming, scaling and vectorizing.
+
+First, we scale the code using OpenMP. Our edits apply OpenMP directives to distribute and scale our computations across all available cores and threads. The key OpenMP directive appears before our z loop: 
+
+#pragma omp for collapse(2)
+
+This clause tells the compiler to collapse the next two loops (z and y) and then apply the OpenMP "omp for" work scheduling mechanism. Conceptually, the for loop changes to a single loop that executes as for(yz = 0; yz < ny*nx; ++yz) with the associated similar implied mapping for the use of y and z in the body of the loop. This will enable each thread to be assigned larger chunks of data to process more calculations on each loop execution.
+
+Secondly, we manually search for vectorization opportunities. The compiler was unable to automatically vectorize our code. This occurance is common if our implementation uses or reuses multiple pointer variables and array values. The compiler believes it is unable to assure correctness as the value of enclosed expressions seem to be dependent on vector lanes to be calculated simultaneously.
+
+The innermost loop in the diffusion() function uses two temporary array pointers heavily, f1_t and f2_t, thus the compiler cannot confirm independence. With situations like this, when a developer is sure no dependency exists, we use:
+
+#pragma simd"
+
+requesting the compiler to vectorize the following loops regardless of potential dependencies or other potential constraints, as we have with the x loop.
+
+We now have both scaled and vectorized our code, and we have seen very significant performance improvement over the baseline.  Reviewing the code further, the x boundary check is found to be superfluous and slowing. A stencil altering boundry is encountered rarely for volumes of significant size. Since only our starting and ending x coordinates 0 and nx - 1 will hit the boundary condition, we can create an inner loop without any boundary checks by simply ensuring we process x indices from 1 to nx - 2. Furthermore, since the stencil always traverses in single units across the x row of sub-volumes, we can update the stencil positions by simply incrementing them. Also, we can eliminate calculating the east and west locations by referencing their positions directly in the array index (e = c - 1 and w = c + 1).
+
+Our final improvement focuses on increasing cache hits during data access.  The data access patterns of stencil operations, like the kind we use,  typically exploit data locality. Tiling and blocking are terms describing the technique often used for improving data reuse in cache architectures by increasing locality of a block's memory requirements. Generally “least recently used” (LRU) methods are used to swap data from the cache as required by subsequent cache accesses. Since memory accesses are significant, reusing data in cache lines local to the current code sequence is important for efficiency. 
+
+In our diffusion stencil code, each innermost loop iteration processes the x elements of a y row sequentially, then moving to the following y row. Ignoring the work division from scheduling multiple threads for a moment, there is a high likelihood of accessing data in the L1 or L2 cache we have used before from the current and previous y rows since our access of those y data is recent. We can also noticed their is low likelyhood of z data reuse as the bottom and top row data on the adjacent z plane are used once and then not accessed again until the next full y plane is processed at the same row. If we consider processing a rectangular tile of y—actually a slab of yx values across a range of z. The top row in a given z iteration will still be in cache to serve as left, center, and right rows for the next z, and the bottom row for the z after that, avoiding unneccessary memory requests.
+
+We tile the diffusion() function by selecting a blocking factor value "YBF" for the number of y rows to process in each slab; the optimal number will maintain the sufficient amounts of y and z data in the cache long enough to be reused during computation. Since we will be processing a portion or tile of y rows across the full z dimension, we add an outer y loop to control stepping to the start of each tile. The inner y loop is then adjusted to perform the per-row processing within the current tile. The x processing with the peeled out boundary management is maintained so we keep that optimization intact.
+
+These are a few examples of “parallel thinking” applied to real-world serial implementations to produce high-speed parallel code. Code that remains general and portable while scaling across cores and threads, as well as taking advantage of vectorization and cache architecture. We have found that, when the investment is made in optimizing code for parallel techniques such as these performance increases hundreds or even thousands of times.
+
+gcc -fopenmp -std=c99 -O3 diffusion_tiled.c -o diffusion_tiled -lm
+export OMP_NUM_THREADS=80
+export KMP_AFFINITY=scatter
+./diffusion_tiled

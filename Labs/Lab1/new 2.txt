@@ -1,0 +1,73 @@
+#include <stdio.h>
+ 
+ int SIZE, NTHREADS;
+int **A, **B, **C;
+
+double dtime()
+{
+    double tseconds = 0.0;
+    struct timeval mytime;
+    gettimeofday(&mytime,(struct timezone*)0);
+    tseconds = (double)(mytime.tv_sec + mytime.tv_usec*1.0e-6);
+    return( tseconds );
+}
+
+
+void init()
+{
+    int i, j;
+
+    A = (int**)malloc(SIZE * sizeof(int *));
+    for(i = 0; i < SIZE; i++)
+        A[i] = malloc(SIZE * sizeof(int));
+
+    B = (int**)malloc(SIZE * sizeof(int *));
+    for(i = 0; i < SIZE; i++)
+        B[i] = malloc(SIZE * sizeof(int));
+
+    C = (int**)malloc(SIZE * sizeof(int *));
+    for(i = 0; i < SIZE; i++)
+        C[i] = malloc(SIZE * sizeof(int));
+
+    srand(time(NULL));
+
+    for(i = 0; i < SIZE; i++) {
+        for(j = 0; j < SIZE; j++) {
+            A[i][j] = rand()%100;
+            B[i][j] = rand()%100;
+        }
+    }
+}
+ 
+int main(int argc, char* argv[])
+{
+
+int m, n, p, q, c, d, k, sum = 0;
+		double tstart, tstop, ttime;
+  if(argc != 3)
+    {
+        printf("Usage: %s <size_of_square_matrix> <number_of_threads>\n", argv[0]);
+        exit(1);
+    }
+
+    SIZE = atoi(argv[1]);
+	
+    init();
+	
+ 	printf("Starting Compute\r\n");
+	 tstart = dtime();
+	
+	
+	tstop = dtime();
+
+	/* elasped time */
+    ttime = tstop - tstart;
+
+    /* Print the results */
+    if ((ttime) > 0.0)
+	{
+	    printf("Secs Serial = %10.3lf\n",ttime);
+    }
+ 
+  return 0;
+}
